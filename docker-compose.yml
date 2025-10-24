@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Base de datos PostgreSQL
+  postgres-container:
+    image: postgres:15
+    container_name: postgres-container
+    environment:
+      - POSTGRES_DB=crudpark_db
+      - POSTGRES_USER=crudpark_user
+      - POSTGRES_PASSWORD=CrudPark2025!
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./crudpark-database-schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - crudpark-network
+    restart: unless-stopped
+
+  # Backend API - Conectado a base de datos local
+  crudpark-api:
+    build:
+      context: ./crudpark-backend
+      dockerfile: Dockerfile
+    container_name: crudpark-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      # Conexión a base de datos local
+      - ConnectionStrings__DefaultConnection=Host=postgres-container;Port=5432;Database=crudpark_db;Username=crudpark_user;Password=CrudPark2025!;
+    ports:
+      - "8080:8080"  # Puerto 8080 para API
+    networks:
+      - crudpark-network
+    depends_on:
+      - postgres-container
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend - Interfaz de usuario
+  crudpark-frontend:
+    build:
+      context: ./crudpark-frontend
+      dockerfile: Dockerfile
+    container_name: crudpark-frontend
+    ports:
+      - "80:80"  # Puerto 80 para frontend (HTTP)
+    environment:
+      - VITE_API_URL=/api
+    depends_on:
+      - crudpark-api
+    networks:
+      - crudpark-network
+    restart: unless-stopped
+
+networks:
+  crudpark-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
